@@ -4,7 +4,7 @@ A keyboard-driven notes app that keeps everything in your browser. No account, n
 
 **[Live demo →](https://www.joaoatan.co.uk/project3/)**
 
-![The ThoughtKeeper sidebar and editor in dark mode, showing a note grouped under Today and a live word count](ThoughKeeper.png)
+![The ThoughtKeeper sidebar and editor in dark mode, showing a note grouped under Today and a live word count](ThoughtKeeper.png)
 
 Built with TypeScript and Vite. No UI framework, no runtime dependencies, about 6 kB gzipped.
 
