@@ -13,6 +13,10 @@ import {
 const SAVE_DELAY_MS = 300;
 const PREVIEW_LENGTH = 60;
 const UNDO_WINDOW_MS = 6000;
+const WARNING_MS = 10000;
+
+/** Matches the breakpoint in style.css, where the sidebar becomes a drawer. */
+const NARROW_QUERY = '(max-width: 640px)';
 
 function must<T extends Element>(selector: string): T {
   const el = document.querySelector<T>(selector);
@@ -29,6 +33,7 @@ const newBtn = must<HTMLButtonElement>('#new-note');
 const clearAllBtn = must<HTMLButtonElement>('#clear-all');
 const wordCountEl = must<HTMLElement>('#word-count');
 const exitFocusBtn = must<HTMLButtonElement>('#exit-focus');
+const scrimEl = must<HTMLElement>('#scrim');
 const toastEl = must<HTMLElement>('#toast');
 const toastMessageEl = must<HTMLElement>('#toast-message');
 const toastUndoBtn = must<HTMLButtonElement>('#toast-undo');
@@ -54,6 +59,9 @@ let groupLabels = new Map<string, string>();
 
 let saveTimer: number | undefined;
 
+/** Set while saves are failing, so the warning shows once rather than per keystroke. */
+let saveFailed = false;
+
 /**
  * Everything needed to put the app back the way it was before a delete.
  * Safe to hold by reference: `notes` and `order` are replaced, never mutated.
@@ -78,7 +86,17 @@ function flushSave(): void {
     clearTimeout(saveTimer);
     saveTimer = undefined;
   }
-  saveNotes(notes);
+
+  /* A failed write is otherwise invisible: the editor keeps accepting text that
+     won't survive a reload. Warn once per outage, not once per keystroke. */
+  const saved = saveNotes(notes);
+  if (!saved && !saveFailed) {
+    showToast('Couldn’t save — changes will be lost if you reload.', {
+      undo: false,
+      duration: WARNING_MS,
+    });
+  }
+  saveFailed = !saved;
 }
 
 function scheduleSave(): void {
@@ -135,11 +153,17 @@ function hideToast(): void {
   undoSnapshot = null;
 }
 
-function showToast(message: string): void {
+type ToastOptions = { undo?: boolean; duration?: number };
+
+function showToast(
+  message: string,
+  { undo = true, duration = UNDO_WINDOW_MS }: ToastOptions = {},
+): void {
   if (toastTimer !== undefined) clearTimeout(toastTimer);
   toastMessageEl.textContent = message;
+  toastUndoBtn.hidden = !undo;
   toastEl.hidden = false;
-  toastTimer = window.setTimeout(hideToast, UNDO_WINDOW_MS);
+  toastTimer = window.setTimeout(hideToast, duration);
 }
 
 function undoDelete(): void {
@@ -243,14 +267,19 @@ function createNote(): void {
   notes = [note, ...notes];
   selectedId = note.id;
   reorder();
+  closeDrawer();
   commitNow();
   titleEl.focus();
 }
 
 function selectNote(id: string): void {
-  if (id === selectedId) return;
+  if (id === selectedId) {
+    closeDrawer();
+    return;
+  }
   selectedId = id;
   reorder();
+  closeDrawer();
   render();
 }
 
@@ -283,10 +312,23 @@ function clearAllNotes(): void {
 
 function setFocusMode(on: boolean): void {
   document.body.classList.toggle('focus-mode', on);
+  exitFocusBtn.setAttribute('aria-expanded', String(!on));
 }
 
 function toggleFocusMode(): void {
   setFocusMode(!document.body.classList.contains('focus-mode'));
+}
+
+function isNarrow(): boolean {
+  return window.matchMedia(NARROW_QUERY).matches;
+}
+
+/**
+ * On phones the sidebar is an overlay drawer, so anything that hands control
+ * back to the editor should also get the list out of the way. No-op when wide.
+ */
+function closeDrawer(): void {
+  if (isNarrow()) setFocusMode(true);
 }
 
 /** Move the selection by `step` positions through the visible list order. */
@@ -328,7 +370,8 @@ bodyEl.addEventListener('input', () => {
 });
 
 toastUndoBtn.addEventListener('click', undoDelete);
-exitFocusBtn.addEventListener('click', () => setFocusMode(false));
+exitFocusBtn.addEventListener('click', toggleFocusMode);
+scrimEl.addEventListener('click', () => setFocusMode(true));
 clearAllBtn.addEventListener('click', clearAllNotes);
 
 /* Keyboard shortcuts */
@@ -402,6 +445,10 @@ window.addEventListener('pagehide', flushSave);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushSave();
 });
+
+/* Phones open on the editor. The list is one tap away, but a 268px sidebar
+   beside a sliver of text is not a usable first screen. */
+setFocusMode(isNarrow());
 
 reorder();
 render();

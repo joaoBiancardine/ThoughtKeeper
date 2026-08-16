@@ -35,11 +35,14 @@ export function loadNotes(): Note[] {
   return data.notes.filter(isNote);
 }
 
-export function saveNotes(notes: Note[]): void {
+/** True if the write landed. Fails when the quota is full or storage is blocked. */
+export function saveNotes(notes: Note[]): boolean {
   const data: StoredData = { version: 1, notes };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
   } catch (err) {
     console.error('Failed to save notes.', err);
+    return false;
   }
 }
